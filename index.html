@@ -44,6 +44,9 @@
             console.error("Lỗi khởi tạo Firebase:", e);
         }
 
+        // Tên Collection trong database của bạn (tự đặt)
+        const DB_COLLECTION = 'baobai_data';
+
         // Global variables
         window.db = db;
         window.auth = auth;
@@ -54,9 +57,7 @@
         window.onSnapshot = onSnapshot;
         window.query = query; 
         window.currentUser = null;
-
-        // Tên Collection trong database của bạn (tự đặt)
-        const DB_COLLECTION = 'baobai_data';
+        window.DB_COLLECTION = DB_COLLECTION; // Đưa biến ra toàn cục để script bên dưới dùng được
 
         // Authentication & Realtime Listener
         async function initApp() {
@@ -77,6 +78,10 @@
                 await signInAnonymously(auth);
             } catch (error) {
                 console.error("Auth error:", error);
+                // Nếu lỗi auth/operation-not-allowed nghĩa là chưa bật Anonymous
+                if (error.code === 'auth/operation-not-allowed') {
+                    alert("LỖI CẤU HÌNH:\nBạn chưa bật 'Anonymous' trong Authentication.\nVào Console -> Authentication -> Sign-in method -> Bật Anonymous lên.");
+                }
                 showToast("Lỗi đăng nhập hệ thống!", true);
             }
 
@@ -119,7 +124,23 @@
                 }
             }, (error) => {
                 console.error("Data sync error:", error);
-                showToast("Mất kết nối đồng bộ! Kiểm tra mạng.", true);
+                if (error.code === 'permission-denied') {
+                     showToast("Lỗi quyền truy cập! (Xem hướng dẫn)", true);
+                     // Hiển thị thông báo hướng dẫn sửa lỗi cho người dùng
+                     document.getElementById('loading-overlay').style.display = 'flex';
+                     document.getElementById('loading-overlay').style.opacity = '1';
+                     document.getElementById('loading-overlay').innerHTML = `
+                        <div class="bg-white p-6 rounded-xl shadow-2xl max-w-md text-center m-4">
+                            <i class="fa-solid fa-lock text-5xl text-red-500 mb-4"></i>
+                            <h3 class="text-xl font-bold text-gray-800 mb-2">Chưa mở quyền truy cập!</h3>
+                            <p class="text-gray-600 mb-4 text-sm">Bạn cần vào <b>Firestore Database</b> > Tab <b>Rules</b> và sửa code thành:</p>
+                            <code class="block bg-gray-100 p-2 rounded text-left text-xs mb-4 font-mono">allow read, write: if true;</code>
+                            <button onclick="location.reload()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Đã sửa xong, tải lại trang</button>
+                        </div>
+                     `;
+                } else {
+                    showToast("Mất kết nối đồng bộ! Kiểm tra mạng.", true);
+                }
             });
         }
 
@@ -508,7 +529,7 @@
                 let successCount = 0;
                 // Sử dụng collection variable đã định nghĩa ở trên (DB_COLLECTION)
                 // Lưu ý: Firebase SDK đã được import, dùng window.db
-                const collectionRef = window.collection(window.db, DB_COLLECTION);
+                const collectionRef = window.collection(window.db, window.DB_COLLECTION);
 
                 for (const file of files) {
                     const base64Image = await compressAndRead(file);
@@ -536,7 +557,12 @@
 
             } catch (error) {
                 console.error("Upload error:", error);
-                showToast("Lỗi khi tải lên! (Xem console)", true);
+                if (error.code === 'permission-denied') {
+                    showToast("Lỗi quyền truy cập! (Xem hướng dẫn)", true);
+                    alert("LỖI QUYỀN TRUY CẬP (PERMISSION DENIED):\n\nBạn chưa mở quyền ghi dữ liệu trong Firebase.\n\nHãy vào Firebase Console -> Firestore Database -> Tab 'Rules' -> Sửa thành:\nallow read, write: if true;\n\nSau đó bấm Publish.");
+                } else {
+                    showToast("Lỗi khi tải lên! (Xem console)", true);
+                }
             } finally {
                 event.target.value = '';
                 label.innerHTML = originalContent;
@@ -550,10 +576,13 @@
 
             if (confirm("Xóa ảnh này sẽ mất vĩnh viễn với tất cả mọi người. Bạn chắc chứ?")) {
                 try {
-                    await window.deleteDoc(window.doc(window.db, DB_COLLECTION, docId));
+                    await window.deleteDoc(window.doc(window.db, window.DB_COLLECTION, docId));
                     showToast("Đã xóa ảnh trên hệ thống.", true);
                 } catch (e) {
                     console.error(e);
+                    if (e.code === 'permission-denied') {
+                         alert("LỖI QUYỀN TRUY CẬP:\nBạn chưa cấp quyền 'write' trong Rules.");
+                    }
                     showToast("Lỗi khi xóa!", true);
                 }
             }
