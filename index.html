@@ -515,34 +515,48 @@
             const container = document.getElementById('class-grid');
             let html = '';
             
-            // Lọc dữ liệu ảnh của khối này (chỉ đếm ảnh, không đếm status)
-            // item.type === 'image' hoặc item.image tồn tại (để tương thích ngược)
-            
             for (let i = 1; i <= CLASSES_PER_GRADE; i++) {
                 const classId = `${grade}-${i}`;
                 const displayClass = `${grade}/${i}`;
                 
-                // Đếm số ảnh
-                const count = window.globalAppData.filter(item => 
-                    item.classId === classId && 
-                    (item.type === 'image' || (!item.type && item.image))
-                ).length;
+                // Lọc dữ liệu của lớp hiện tại
+                const classData = window.globalAppData.filter(item => item.classId === classId);
                 
+                // 1. Đếm số ảnh (type = image hoặc không có type nhưng có field image)
+                const count = classData.filter(item => 
+                    item.type === 'image' || (!item.type && item.image)
+                ).length;
                 const hasData = count > 0;
+
+                // 2. Lấy thông tin trạng thái (type = status)
+                const statusDoc = classData.find(item => item.type === 'status');
+                const hasTin2 = statusDoc && statusDoc.tin2 && statusDoc.tin2.trim().length > 0;
+                const isDaNhap = statusDoc && statusDoc.status === 'da_nhap';
                 
                 html += `
                     <button onclick="selectClass('${classId}', '${displayClass}')" class="bg-white/80 backdrop-blur p-4 rounded-2xl shadow-sm border border-emerald-50 hover:border-emerald-400 hover:shadow-lg transition-all relative group hover:-translate-y-1">
                         <div class="flex justify-between items-start mb-2">
                             <div class="text-xl font-bold text-gray-700 group-hover:text-emerald-700">Lớp ${displayClass}</div>
-                            ${hasData ? '<div class="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-red-300 shadow-lg"></div>' : ''}
+                            
+                            <!-- Khu vực đèn báo (Góc trên phải) -->
+                            <div class="flex gap-1">
+                                ${hasTin2 ? '<div class="w-3 h-3 bg-yellow-400 rounded-full animate-pulse shadow-yellow-300 shadow-lg" title="Có ghi chú TIN 2"></div>' : ''}
+                                ${hasData ? '<div class="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-red-300 shadow-lg" title="Có hình ảnh báo bài"></div>' : ''}
+                            </div>
                         </div>
                         <div class="h-1 w-full bg-gray-100 rounded-full overflow-hidden mb-2">
                              <div class="h-full bg-emerald-500 transition-all" style="width: ${hasData ? '100%' : '0%'}"></div>
                         </div>
-                        <div class="text-xs text-gray-500 flex justify-between items-center">
-                            <span class="${hasData ? 'text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-md' : 'text-gray-400'}">
+                        
+                        <!-- Cập nhật: Đám mây bên trái, Dấu tích bên phải -->
+                        <div class="text-xs text-gray-500 flex justify-between items-center mt-3">
+                            <!-- Bên trái: Số lượng ảnh -->
+                            <span class="${hasData ? 'text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100' : 'text-gray-400'}">
                                 ${hasData ? `<i class="fa-solid fa-cloud"></i> ${count}` : 'Trống'}
                             </span>
+                            
+                            <!-- Bên phải: Dấu tích hoàn thành -->
+                            ${isDaNhap ? '<div class="bg-green-100 text-green-600 w-6 h-6 rounded-full flex items-center justify-center shadow-sm" title="Đã nhập xong"><i class="fa-solid fa-check"></i></div>' : ''}
                         </div>
                     </button>
                 `;
