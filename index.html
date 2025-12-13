@@ -13,7 +13,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Thêm setDoc để lưu trạng thái theo ID cố định
+        import { getFirestore, collection, addDoc, deleteDoc, setDoc, doc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- CẤU HÌNH FIREBASE ---
         const firebaseConfig = {
@@ -48,6 +49,7 @@
         window.collection = collection;
         window.addDoc = addDoc;
         window.deleteDoc = deleteDoc;
+        window.setDoc = setDoc; // Mới thêm
         window.doc = doc;
         window.onSnapshot = onSnapshot;
         window.query = query; 
@@ -181,6 +183,7 @@
                         const now = new Date();
                         await window.addDoc(collectionRef, {
                             classId: window.currentClass,
+                            type: 'image', // Đánh dấu là ảnh
                             image: base64Image,
                             timestamp: now.getTime(),
                             date: now.toLocaleDateString('vi-VN'),
@@ -198,7 +201,7 @@
 
             } catch (error) {
                 console.error("Upload error:", error);
-                alert("Lỗi tải lên: " + error.message); // HIỆN LỖI CHI TIẾT
+                alert("Lỗi tải lên: " + error.message);
             } finally {
                 event.target.value = '';
                 label.innerHTML = originalContent;
@@ -215,20 +218,50 @@
 
             if (confirm("Bạn có chắc chắn muốn xóa ảnh này không?")) {
                 try {
-                    // Sử dụng window.DB_COLLECTION
                     await window.deleteDoc(window.doc(window.db, window.DB_COLLECTION, docId));
                     showToast("Đã xóa ảnh thành công.");
                 } catch (e) {
                     console.error(e);
-                    // HIỆN LỖI CHI TIẾT ĐỂ NGƯỜI DÙNG BIẾT
                     alert("Chi tiết lỗi xóa: " + e.message + "\n(Mã lỗi: " + e.code + ")");
                 }
             }
         }
 
-        // --- GẮN HÀM VÀO WINDOW ĐỂ HTML GỌI ĐƯỢC (QUAN TRỌNG) ---
+        // --- HÀM MỚI: CẬP NHẬT TRẠNG THÁI & TIN 2 ---
+        async function updateClassStatus() {
+            if (!window.currentUser || !window.currentClass) return;
+
+            const radios = document.getElementsByName('classStatus');
+            let status = '';
+            for (const r of radios) {
+                if (r.checked) status = r.value;
+            }
+
+            const tin2 = document.getElementById('tin2-input').value;
+
+            try {
+                // Tạo ID cố định cho status của lớp này: status_CLASSID
+                // Dùng setDoc để ghi đè hoặc tạo mới document này
+                const statusDocId = 'status_' + window.currentClass;
+                await window.setDoc(window.doc(window.db, window.DB_COLLECTION, statusDocId), {
+                    classId: window.currentClass,
+                    type: 'status', // Đánh dấu là status, không phải ảnh
+                    status: status,
+                    tin2: tin2,
+                    lastUpdate: new Date().getTime()
+                }, { merge: true }); // Merge để không mất dữ liệu khác nếu có
+
+                console.log("Đã cập nhật trạng thái");
+                // Không cần showToast để tránh spam khi gõ phím
+            } catch (e) {
+                console.error("Lỗi lưu trạng thái:", e);
+            }
+        }
+
+        // --- GẮN HÀM VÀO WINDOW ---
         window.handleFileUpload = handleFileUpload;
         window.deleteImage = deleteImage;
+        window.updateClassStatus = updateClassStatus;
         
         // Khởi chạy
         document.addEventListener('DOMContentLoaded', initApp);
@@ -344,17 +377,49 @@
 
         <!-- VIEW 3: DASHBOARD -->
         <section id="view-dashboard" class="max-w-6xl mx-auto hidden transition-all duration-300 h-full flex flex-col">
-            <div class="glass-card p-4 rounded-2xl mb-6 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 sticky top-20 z-30">
-                <button onclick="goBackToClass()" class="text-gray-600 hover:text-emerald-600 flex items-center gap-2 font-medium bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-100 hover:border-emerald-200 transition-all">
-                    <i class="fa-solid fa-arrow-left"></i> Đổi Lớp
-                </button>
-                
-                <div class="flex gap-3 w-full md:w-auto">
-                    <label for="file-upload" class="flex-1 md:flex-none cursor-pointer bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-emerald-500/30 transition-all flex items-center justify-center gap-3 font-bold active:scale-95 transform">
-                        <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
-                        <span>Đăng Báo Bài</span>
-                    </label>
-                    <input id="file-upload" type="file" accept="image/*" multiple class="hidden" onchange="handleFileUpload(event)">
+            <!-- Header Card chứa Nút bấm và Công cụ mới -->
+            <div class="glass-card p-4 rounded-2xl mb-6 shadow-sm sticky top-20 z-30">
+                <!-- Dòng 1: Các nút điều khiển chính -->
+                <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
+                    <button onclick="goBackToClass()" class="text-gray-600 hover:text-emerald-600 flex items-center gap-2 font-medium bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-100 hover:border-emerald-200 transition-all">
+                        <i class="fa-solid fa-arrow-left"></i> Đổi Lớp
+                    </button>
+                    
+                    <div class="flex gap-3 w-full md:w-auto">
+                        <label for="file-upload" class="flex-1 md:flex-none cursor-pointer bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-emerald-500/30 transition-all flex items-center justify-center gap-3 font-bold active:scale-95 transform">
+                            <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
+                            <span>Đăng Báo Bài</span>
+                        </label>
+                        <input id="file-upload" type="file" accept="image/*" multiple class="hidden" onchange="handleFileUpload(event)">
+                    </div>
+                </div>
+
+                <!-- Dòng 2: Trạng thái và TIN 2 (Thêm mới) -->
+                <div class="border-t border-emerald-100 pt-4 bg-emerald-50/50 rounded-lg p-3">
+                    <div class="flex flex-col gap-3">
+                        <!-- Tùy chọn Đã Nhập / Chưa Nhập -->
+                        <div class="flex items-center gap-6">
+                            <span class="font-bold text-emerald-800 text-sm whitespace-nowrap"><i class="fa-solid fa-clipboard-check"></i> Trạng thái:</span>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer group">
+                                    <input type="radio" name="classStatus" value="da_nhap" class="accent-emerald-600 w-5 h-5 cursor-pointer" onchange="updateClassStatus()">
+                                    <span class="text-emerald-700 font-medium group-hover:text-emerald-900">Đã Nhập</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer group">
+                                    <input type="radio" name="classStatus" value="chua_nhap" class="accent-red-500 w-5 h-5 cursor-pointer" onchange="updateClassStatus()">
+                                    <span class="text-red-500 font-medium group-hover:text-red-700">Chưa Nhập</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Ô nhập văn bản TIN 2 -->
+                        <div class="flex flex-col gap-1 w-full">
+                            <span class="font-bold text-emerald-800 text-sm"><i class="fa-regular fa-message"></i> TIN 2:</span>
+                            <input type="text" id="tin2-input" placeholder="Nhập ghi chú hoặc thông báo cho lớp..." 
+                                   class="w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white" 
+                                   onchange="updateClassStatus()">
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -377,7 +442,7 @@
                 &copy; 2025 Hệ thống Báo Bài Online. Dữ liệu đồng bộ thời gian thực.
             </p>
             <p class="text-emerald-500/70 text-xs mt-2 font-light">
-                Designed by TONG VO TAN PHAT <i class="fa-solid fa-heart text-red-400 animate-pulse mx-1"></i> for Education
+                Designed with <i class="fa-solid fa-heart text-red-400 animate-pulse mx-1"></i> for Education
             </p>
         </div>
     </footer>
@@ -450,14 +515,19 @@
             const container = document.getElementById('class-grid');
             let html = '';
             
-            // Filter data for this grade to count
-            const gradeData = window.globalAppData.filter(item => item.classId && item.classId.startsWith(grade + '-'));
-
+            // Lọc dữ liệu ảnh của khối này (chỉ đếm ảnh, không đếm status)
+            // item.type === 'image' hoặc item.image tồn tại (để tương thích ngược)
+            
             for (let i = 1; i <= CLASSES_PER_GRADE; i++) {
                 const classId = `${grade}-${i}`;
                 const displayClass = `${grade}/${i}`;
                 
-                const count = window.globalAppData.filter(item => item.classId === classId).length;
+                // Đếm số ảnh
+                const count = window.globalAppData.filter(item => 
+                    item.classId === classId && 
+                    (item.type === 'image' || (!item.type && item.image))
+                ).length;
+                
                 const hasData = count > 0;
                 
                 html += `
@@ -484,12 +554,39 @@
             const container = document.getElementById('gallery-grid');
             const emptyState = document.getElementById('empty-state');
             
-            const classUploads = window.globalAppData.filter(item => item.classId === window.currentClass);
+            // Lấy tất cả dữ liệu của lớp hiện tại
+            const allClassData = window.globalAppData.filter(item => item.classId === window.currentClass);
+
+            // 1. Tách Status & TIN 2 để hiển thị lên form
+            const statusDoc = allClassData.find(item => item.type === 'status');
+            
+            // Cập nhật UI trạng thái
+            const radioDaNhap = document.querySelector('input[name="classStatus"][value="da_nhap"]');
+            const radioChuaNhap = document.querySelector('input[name="classStatus"][value="chua_nhap"]');
+            const tin2Input = document.getElementById('tin2-input');
+
+            if (statusDoc) {
+                if (statusDoc.status === 'da_nhap') radioDaNhap.checked = true;
+                else if (statusDoc.status === 'chua_nhap') radioChuaNhap.checked = true;
+                else {
+                    radioDaNhap.checked = false;
+                    radioChuaNhap.checked = false;
+                }
+                tin2Input.value = statusDoc.tin2 || '';
+            } else {
+                // Reset nếu chưa có dữ liệu
+                radioDaNhap.checked = false;
+                radioChuaNhap.checked = false;
+                tin2Input.value = '';
+            }
+
+            // 2. Lọc lấy ảnh để hiển thị (loại bỏ statusDoc)
+            const classImages = allClassData.filter(item => item.type === 'image' || (!item.type && item.image));
 
             document.getElementById('current-context').innerHTML = `Lớp ${window.currentClass.replace('-', '/')}`;
             document.getElementById('current-context').classList.remove('hidden');
 
-            if (classUploads.length === 0) {
+            if (classImages.length === 0) {
                 container.innerHTML = '';
                 emptyState.classList.remove('hidden');
                 return;
@@ -497,7 +594,7 @@
 
             emptyState.classList.add('hidden');
             
-            const sortedUploads = classUploads.sort((a, b) => b.timestamp - a.timestamp);
+            const sortedUploads = classImages.sort((a, b) => b.timestamp - a.timestamp);
 
             container.innerHTML = sortedUploads.map(item => `
                 <div class="bg-white rounded-2xl shadow-md border border-emerald-50 overflow-hidden flex flex-col hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 transform group">
@@ -541,7 +638,7 @@
             window.currentGrade = grade;
             document.getElementById('grade-title').innerText = `Lớp - Khối ${grade}`;
             renderClasses(grade);
-            window.selectClass = selectClass; // Ensure global access for next steps
+            window.selectClass = selectClass; 
             switchView('view-class');
         }
 
