@@ -13,7 +13,6 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // Thêm setDoc để lưu trạng thái theo ID cố định
         import { getFirestore, collection, addDoc, deleteDoc, setDoc, doc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- CẤU HÌNH FIREBASE ---
@@ -49,7 +48,7 @@
         window.collection = collection;
         window.addDoc = addDoc;
         window.deleteDoc = deleteDoc;
-        window.setDoc = setDoc; // Mới thêm
+        window.setDoc = setDoc;
         window.doc = doc;
         window.onSnapshot = onSnapshot;
         window.query = query; 
@@ -173,7 +172,6 @@
 
             try {
                 let successCount = 0;
-                // Sử dụng window.DB_COLLECTION để đảm bảo biến tồn tại
                 const collectionRef = window.collection(window.db, window.DB_COLLECTION);
 
                 for (const file of files) {
@@ -183,7 +181,7 @@
                         const now = new Date();
                         await window.addDoc(collectionRef, {
                             classId: window.currentClass,
-                            type: 'image', // Đánh dấu là ảnh
+                            type: 'image',
                             image: base64Image,
                             timestamp: now.getTime(),
                             date: now.toLocaleDateString('vi-VN'),
@@ -231,28 +229,34 @@
         async function updateClassStatus() {
             if (!window.currentUser || !window.currentClass) return;
 
-            const radios = document.getElementsByName('classStatus');
+            // Lấy trạng thái báo bài
+            const radiosStatus = document.getElementsByName('classStatus');
             let status = '';
-            for (const r of radios) {
+            for (const r of radiosStatus) {
                 if (r.checked) status = r.value;
+            }
+
+            // Lấy trạng thái Tin 2 (Mới)
+            const radiosTin2 = document.getElementsByName('tin2Status');
+            let tin2Status = '';
+            for (const r of radiosTin2) {
+                if (r.checked) tin2Status = r.value;
             }
 
             const tin2 = document.getElementById('tin2-input').value;
 
             try {
-                // Tạo ID cố định cho status của lớp này: status_CLASSID
-                // Dùng setDoc để ghi đè hoặc tạo mới document này
                 const statusDocId = 'status_' + window.currentClass;
                 await window.setDoc(window.doc(window.db, window.DB_COLLECTION, statusDocId), {
                     classId: window.currentClass,
-                    type: 'status', // Đánh dấu là status, không phải ảnh
+                    type: 'status',
                     status: status,
                     tin2: tin2,
+                    tin2Status: tin2Status, // Lưu thêm trường này
                     lastUpdate: new Date().getTime()
-                }, { merge: true }); // Merge để không mất dữ liệu khác nếu có
+                }, { merge: true });
 
                 console.log("Đã cập nhật trạng thái");
-                // Không cần showToast để tránh spam khi gõ phím
             } catch (e) {
                 console.error("Lỗi lưu trạng thái:", e);
             }
@@ -282,7 +286,7 @@
             width: 100%;
             height: 100%;
             z-index: -1;
-            opacity: 0.08;
+            opacity: 0.15;
             pointer-events: none;
             display: flex;
             flex-wrap: wrap;
@@ -296,6 +300,7 @@
             margin: 30px;
             transform: rotate(0deg);
             transition: all 0.5s ease;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.05));
         }
 
         .glass-card {
@@ -394,7 +399,7 @@
                     </div>
                 </div>
 
-                <!-- Dòng 2: Trạng thái và TIN 2 (Thêm mới) -->
+                <!-- Dòng 2: Trạng thái và TIN 2 -->
                 <div class="border-t border-emerald-100 pt-4 bg-emerald-50/50 rounded-lg p-3">
                     <div class="flex flex-col gap-3">
                         <!-- Tùy chọn Đã Nhập / Chưa Nhập -->
@@ -418,6 +423,21 @@
                             <input type="text" id="tin2-input" placeholder="Kiểu nhập (Tin 2) GDTC: Mặc đồ TD...." 
                                    class="w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white" 
                                    onchange="updateClassStatus()">
+                        </div>
+
+                        <!-- Dòng MỚI: Tùy chọn Đã Lên Tin 2 / Chưa Lên Tin 2 -->
+                        <div class="flex items-center gap-6 mt-1 border-t border-emerald-100/50 pt-2">
+                            <span class="font-bold text-purple-800 text-sm whitespace-nowrap"><i class="fa-solid fa-bullhorn"></i> TT Tin 2:</span>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer group">
+                                    <input type="radio" name="tin2Status" value="da_len_tin2" class="accent-purple-600 w-5 h-5 cursor-pointer" onchange="updateClassStatus()">
+                                    <span class="text-purple-700 font-medium group-hover:text-purple-900">Đã Lên</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer group">
+                                    <input type="radio" name="tin2Status" value="chua_len_tin2" class="accent-gray-500 w-5 h-5 cursor-pointer" onchange="updateClassStatus()">
+                                    <span class="text-gray-500 font-medium group-hover:text-gray-700">Chưa Lên</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -488,7 +508,8 @@
             let html = '';
             for(let i = 0; i < 40; i++) {
                 const randomIcon = BG_ICONS[Math.floor(Math.random() * BG_ICONS.length)];
-                html += `<i class="fa-solid ${randomIcon} bg-icon" style="transform: rotate(${Math.floor(Math.random() * 360)}deg); font-size: ${1 + Math.random() * 2}rem; opacity: ${0.1 + Math.random() * 0.2};"></i>`;
+                // Tăng kích thước font và độ đậm (opacity) của từng icon
+                html += `<i class="fa-solid ${randomIcon} bg-icon" style="transform: rotate(${Math.floor(Math.random() * 360)}deg); font-size: ${2 + Math.random() * 3}rem; opacity: ${0.5 + Math.random() * 0.5};"></i>`;
             }
             container.innerHTML = html;
         }
@@ -522,16 +543,17 @@
                 // Lọc dữ liệu của lớp hiện tại
                 const classData = window.globalAppData.filter(item => item.classId === classId);
                 
-                // 1. Đếm số ảnh (type = image hoặc không có type nhưng có field image)
+                // 1. Đếm số ảnh
                 const count = classData.filter(item => 
                     item.type === 'image' || (!item.type && item.image)
                 ).length;
                 const hasData = count > 0;
 
-                // 2. Lấy thông tin trạng thái (type = status)
+                // 2. Lấy thông tin trạng thái
                 const statusDoc = classData.find(item => item.type === 'status');
                 const hasTin2 = statusDoc && statusDoc.tin2 && statusDoc.tin2.trim().length > 0;
                 const isDaNhap = statusDoc && statusDoc.status === 'da_nhap';
+                const isDaLenTin2 = statusDoc && statusDoc.tin2Status === 'da_len_tin2';
                 
                 html += `
                     <button onclick="selectClass('${classId}', '${displayClass}')" class="bg-white/80 backdrop-blur p-4 rounded-2xl shadow-sm border border-emerald-50 hover:border-emerald-400 hover:shadow-lg transition-all relative group hover:-translate-y-1">
@@ -540,6 +562,7 @@
                             
                             <!-- Khu vực đèn báo (Góc trên phải) -->
                             <div class="flex gap-1">
+                                ${isDaLenTin2 ? '<div class="w-3 h-3 bg-purple-500 rounded-full animate-pulse shadow-purple-300 shadow-lg" title="Đã lên tin 2"></div>' : ''}
                                 ${hasTin2 ? '<div class="w-3 h-3 bg-yellow-400 rounded-full animate-pulse shadow-yellow-300 shadow-lg" title="Có ghi chú TIN 2"></div>' : ''}
                                 ${hasData ? '<div class="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-red-300 shadow-lg" title="Có hình ảnh báo bài"></div>' : ''}
                             </div>
@@ -578,20 +601,35 @@
             const radioDaNhap = document.querySelector('input[name="classStatus"][value="da_nhap"]');
             const radioChuaNhap = document.querySelector('input[name="classStatus"][value="chua_nhap"]');
             const tin2Input = document.getElementById('tin2-input');
+            const radioDaLen = document.querySelector('input[name="tin2Status"][value="da_len_tin2"]');
+            const radioChuaLen = document.querySelector('input[name="tin2Status"][value="chua_len_tin2"]');
 
             if (statusDoc) {
+                // Trạng thái nhập
                 if (statusDoc.status === 'da_nhap') radioDaNhap.checked = true;
                 else if (statusDoc.status === 'chua_nhap') radioChuaNhap.checked = true;
                 else {
                     radioDaNhap.checked = false;
                     radioChuaNhap.checked = false;
                 }
+                
+                // Tin 2 input
                 tin2Input.value = statusDoc.tin2 || '';
+                
+                // Trạng thái Tin 2 (Mới)
+                if (statusDoc.tin2Status === 'da_len_tin2') radioDaLen.checked = true;
+                else if (statusDoc.tin2Status === 'chua_len_tin2') radioChuaLen.checked = true;
+                else {
+                    radioDaLen.checked = false;
+                    radioChuaLen.checked = false;
+                }
             } else {
                 // Reset nếu chưa có dữ liệu
                 radioDaNhap.checked = false;
                 radioChuaNhap.checked = false;
                 tin2Input.value = '';
+                radioDaLen.checked = false;
+                radioChuaLen.checked = false;
             }
 
             // 2. Lọc lấy ảnh để hiển thị (loại bỏ statusDoc)
